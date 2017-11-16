@@ -8,6 +8,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Core.Services
     {
         string GetHealthViolationMessage();
         IEnumerable<HealthIssue> GetHealthIssues();
+        void TransactionTrackingStarted();
+        void TransactionTrackingCompleted();
 
         // TODO: Place health tracing methods declarations here
     }

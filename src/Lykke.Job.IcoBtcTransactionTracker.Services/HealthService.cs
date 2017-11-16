@@ -24,6 +24,16 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             return issues;
         }
 
+        public void TransactionTrackingStarted()
+        {
+            // do nothing for now
+        }
+
+        public void TransactionTrackingCompleted()
+        {
+            // do nothing for now
+        }
+
         // TODO: Place health tracing methods here
     }
 }

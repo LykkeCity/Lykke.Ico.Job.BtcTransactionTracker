@@ -48,6 +48,10 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
 
             builder.RegisterType<ShutdownManager>()
                 .As<IShutdownManager>();
+
+            builder.RegisterType<TransactionTrackingService>()
+                .As<ITransactionTrackingService>();
+
             RegisterPeriodicalHandlers(builder);
 
             // TODO: Add your dependencies here
@@ -59,9 +63,10 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
         {
             // TODO: You should register each periodical handler in DI container as IStartable singleton and autoactivate it
 
-            builder.RegisterType<MyPeriodicalHandler>()
+            builder.RegisterType<TransactionTrackingHandler>()
                 .As<IStartable>()
                 .AutoActivate()
+                .WithParameter("period", _settings.Period)
                 .SingleInstance();
         }
 
