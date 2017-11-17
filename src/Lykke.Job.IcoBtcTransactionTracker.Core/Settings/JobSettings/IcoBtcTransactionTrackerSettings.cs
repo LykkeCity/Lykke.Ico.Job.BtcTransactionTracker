@@ -3,6 +3,7 @@
     public class IcoBtcTransactionTrackerSettings
     {
         public DbSettings Db { get; set; }
-        public int Period { get; set; }
+        public TrackingSettings Tracking { get; set; }
+        public int TrackingInterval { get; set; }
     }
 }

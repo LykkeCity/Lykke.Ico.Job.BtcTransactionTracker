@@ -1,11 +1,14 @@
 ﻿using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Common.Log;
+using Lykke.Job.IcoBtcTransactionTracker.AzureRepositories;
+using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Addresses;
+using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.ProcessedBlocks;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
+using Lykke.Job.IcoBtcTransactionTracker.PeriodicalHandlers;
 using Lykke.Job.IcoBtcTransactionTracker.Services;
 using Lykke.SettingsReader;
-using Lykke.Job.IcoBtcTransactionTracker.PeriodicalHandlers;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Modules
@@ -49,8 +52,15 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
             builder.RegisterType<ShutdownManager>()
                 .As<IShutdownManager>();
 
+            builder.RegisterType<ProcessedBlockRepository>()
+                .As<IProcessedBlockRepository>();
+
+            builder.RegisterType<AddressRepository>()
+                .As<IAddressRepository>();
+
             builder.RegisterType<TransactionTrackingService>()
-                .As<ITransactionTrackingService>();
+                .As<ITransactionTrackingService>()
+                .WithParameter("trackingSettings", _settings.Tracking);
 
             RegisterPeriodicalHandlers(builder);
 
@@ -66,7 +76,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
             builder.RegisterType<TransactionTrackingHandler>()
                 .As<IStartable>()
                 .AutoActivate()
-                .WithParameter("period", _settings.Period)
+                .WithParameter("trackingInterval", _settings.TrackingInterval)
                 .SingleInstance();
         }
 

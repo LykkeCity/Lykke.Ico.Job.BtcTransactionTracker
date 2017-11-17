@@ -6,8 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Lykke.Common" Version="3.0.0" />
+    <PackageReference Include="Lykke.Common" Version="3.0.2" />
     <PackageReference Include="Lykke.Ico.Core" Version="1.0.9" />
+    <PackageReference Include="NBitcoin" Version="4.0.0.42" />
   </ItemGroup>
 
   <ItemGroup>
