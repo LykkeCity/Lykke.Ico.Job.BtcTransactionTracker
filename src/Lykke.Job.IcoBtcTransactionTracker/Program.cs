@@ -7,6 +7,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker
 {
     public class Program
     {
+        public static string EnvInfo => Environment.GetEnvironmentVariable("ENV_INFO");
+
         public static void Main(string[] args)
         {
             Console.WriteLine($"IcoBtcTransactionTracker version {Microsoft.Extensions.PlatformAbstractions.PlatformServices.Default.Application.ApplicationVersion}");

@@ -111,7 +111,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker
                 // NOTE: Job not yet recieve and process IsAlive requests here
 
                 await ApplicationContainer.Resolve<IStartupManager>().StartAsync();
-                await Log.WriteMonitorAsync("", "", "Started");
+                await Log.WriteMonitorAsync("", $"Env: {Program.EnvInfo}", "Started");
             }
             catch (Exception ex)
             {
@@ -146,7 +146,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker
                 
                 if (Log != null)
                 {
-                    await Log.WriteMonitorAsync("", "", "Terminating");
+                    await Log.WriteMonitorAsync("", $"Env: {Program.EnvInfo}", "Terminating");
                 }
                 
                 ApplicationContainer.Dispose();
