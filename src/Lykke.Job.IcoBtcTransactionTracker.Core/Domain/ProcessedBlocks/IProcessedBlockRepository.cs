@@ -7,6 +7,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Core.Domain.ProcessedBlocks
 {
     public interface IProcessedBlockRepository
     {
-        Task<IProcessedBlock> GetLastProcessedBlockAsync();
+        Task<int> GetLastProcessedBlockAsync();
+
+        Task SetLastProcessedBlockAsync(int height);
     }
 }

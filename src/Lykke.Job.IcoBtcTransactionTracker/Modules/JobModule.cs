@@ -1,8 +1,8 @@
 ﻿using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Common.Log;
+using Lykke.Ico.Core.Repositories.InvestorAttribute;
 using Lykke.Job.IcoBtcTransactionTracker.AzureRepositories;
-using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Addresses;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.ProcessedBlocks;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
@@ -53,10 +53,12 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
                 .As<IShutdownManager>();
 
             builder.RegisterType<ProcessedBlockRepository>()
-                .As<IProcessedBlockRepository>();
+                .As<IProcessedBlockRepository>()
+                .WithParameter("connectionStringManager", _dbSettingsManager.Nested(x => x.DataConnString));
 
-            builder.RegisterType<AddressRepository>()
-                .As<IAddressRepository>();
+            builder.RegisterType<InvestorAttributeRepository>()
+                .As<IInvestorAttributeRepository>()
+                .WithParameter("connectionStringManager", _dbSettingsManager.Nested(x => x.DataConnString));
 
             builder.RegisterType<TransactionTrackingService>()
                 .As<ITransactionTrackingService>()
