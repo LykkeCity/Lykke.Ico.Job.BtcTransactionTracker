@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using AzureStorage;
 using AzureStorage.Tables;
 using Common.Log;
-using Lykke.Ico.Core.Contracts;
+using Lykke.Ico.Core;
 using Lykke.Job.IcoBtcTransactionTracker.Core;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.ProcessedBlocks;
 using Lykke.SettingsReader;
@@ -16,7 +16,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.AzureRepositories
 {
     public class ProcessedBlockRepository : IProcessedBlockRepository
     {
-        private INoSQLTableStorage<ProcessedBlockEntity> _tableStorage;
+        private readonly INoSQLTableStorage<ProcessedBlockEntity> _tableStorage;
         private static string GetPartitionKey() => Enum.GetName(typeof(CurrencyType), CurrencyType.Bitcoin);
         private static string GetRowKey() => "LAST_PROCESSED";
 

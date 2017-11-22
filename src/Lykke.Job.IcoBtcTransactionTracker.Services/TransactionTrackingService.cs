@@ -1,36 +1,35 @@
 ﻿using System;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Common.Log;
-using Lykke.Ico.Core.Contracts.Repositories;
-using Lykke.Ico.Core.Repositories.InvestorAttribute;
-using Lykke.Job.IcoBtcTransactionTracker.Core;
+using Lykke.Ico.Core;
+using Lykke.Ico.Core.Queues;
+using Lykke.Ico.Core.Queues.Transactions;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.ProcessedBlocks;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
+using NBitcoin;
 using Newtonsoft.Json;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Services
 {
     public class TransactionTrackingService : ITransactionTrackingService
     {
-        private ILog _log;
-        private TrackingSettings _trackingSettings;
-        private IProcessedBlockRepository _processedBlockRepository;
-        private IInvestorAttributeRepository _investorAttributeRepository;
-        private HttpClient _ninjaHttpClient = new HttpClient();
-        private NBitcoin.Network _ninjaNetwork;
+        private readonly TrackingSettings _trackingSettings;
+        private readonly IProcessedBlockRepository _processedBlockRepository;
+        private readonly IQueuePublisher<BlockchainTransactionMessage> _transactionQueue;
+        private readonly HttpClient _ninjaHttpClient = new HttpClient();
+        private readonly Network _ninjaNetwork;
 
-        public TransactionTrackingService(ILog log, TrackingSettings trackingSettings, 
+        public TransactionTrackingService(
+            TrackingSettings trackingSettings, 
             IProcessedBlockRepository processedBlockRepository,
-            IInvestorAttributeRepository investorAttributeRepository)
+            IQueuePublisher<BlockchainTransactionMessage> transactionQueue)
         {
-            _log = log;
             _trackingSettings = trackingSettings;
             _processedBlockRepository = processedBlockRepository;
-            _investorAttributeRepository = investorAttributeRepository;
-            _ninjaNetwork = NBitcoin.Network.GetNetwork(trackingSettings.NinjaNetwork) ?? NBitcoin.Network.RegTest;
-
+            _transactionQueue = transactionQueue;
+            _ninjaNetwork = Network.GetNetwork(trackingSettings.NinjaNetwork) ?? Network.RegTest;
             _ninjaHttpClient.BaseAddress = new Uri(trackingSettings.NinjaUrl);  
         }
 
@@ -53,35 +52,31 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private async Task ProcessBlock(int height)
         {
             var blockInfo = await GetConfirmedBlockByHeightAsync(height);
-            var block = NBitcoin.Block.Parse(blockInfo.Block);
+            var block = Block.Parse(blockInfo.Block);
 
             foreach (var tx in block.Transactions)
             {
-                foreach(var output in tx.Outputs)
-                {
-                    if (!output.ScriptPubKey.IsValid)
-                    {
-                        // should we do smth?
-                        continue;
-                    }
+                var coins = tx.Outputs.AsCoins()
+                    .Where(c => c.ScriptPubKey.IsValid && c.Amount.Satoshi > 0);
 
-                    var cashInAddress = output.ScriptPubKey.GetDestinationAddress(_ninjaNetwork);
-                    if (cashInAddress == null)
+                foreach (var coin in coins)
+                {
+                    var destAddress = coin.ScriptPubKey.GetDestinationAddress(_ninjaNetwork);
+                    if (destAddress == null)
                     {
                         // not a payment
                         continue;
                     }
 
-                    // check if destination address is cash-in address of ICO investor
-                    var userMail = await _investorAttributeRepository.GetInvestorEmailAsync(InvestorAttributeType.BthPublicKey, cashInAddress.ToString());
-                    if (userMail != null)
+                    await _transactionQueue.SendAsync(new BlockchainTransactionMessage
                     {
-                        // TODO: 
-                        // - calc USD amount, if > 5k redirect user to KYC
-                        // - increase the total ICO amount
-                        // - save investement info for investor
-                        // - send confirmation email
-                    }
+                        Amount = coin.Amount.ToDecimal(MoneyUnit.BTC),
+                        BlockId = blockInfo.AdditionalInformation.BlockId,
+                        BlockTimestamp = blockInfo.AdditionalInformation.BlockTime,
+                        CurrencyType = CurrencyType.Bitcoin,
+                        DestinationAddress = destAddress.ToString(),
+                        TransactionId = coin.Outpoint.ToString(),
+                    });
                 }
             }
 
@@ -91,35 +86,23 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private async Task<BlockInformation> GetLastConfirmedBlockAsync()
         {
             var backTo = _trackingSettings.ConfirmationLimit > 0 ? _trackingSettings.ConfirmationLimit - 1 : 0;
-            var url = string.Format("blocks/tip-{0}?format=json&headeronly=true", backTo);
-            var blockJson = await _ninjaHttpClient.GetStringAsync(url);
+            var url = $"blocks/tip-{backTo}?format=json&headeronly=true";
 
-            return JsonConvert.DeserializeObject<BlockInformation>(blockJson);
+            return await DoNinjaRequest<BlockInformation>(url);
         }
 
         private async Task<BlockInformation> GetConfirmedBlockByHeightAsync(int height)
         {
-            var url = "blocks/" + height;
-            var blockJson = await DoNinjaRequest(url);
-
-            return JsonConvert.DeserializeObject<BlockInformation>(blockJson);
+            return await DoNinjaRequest<BlockInformation>($"blocks/{height}");
         }
 
-        private async Task<string> DoNinjaRequest(string url)
+        private async Task<T> DoNinjaRequest<T>(string url)
         {
-            var result = await _ninjaHttpClient.GetAsync(url);
+            var resp = await _ninjaHttpClient.GetAsync(url);
 
-            try
-            {
-                result.EnsureSuccessStatusCode();
-            }
-            catch (Exception ex)
-            {
-                await _log.WriteErrorAsync(nameof(IcoBtcTransactionTracker), nameof(TransactionTrackingService), nameof(DoNinjaRequest), ex);
-                throw;
-            }
+            resp.EnsureSuccessStatusCode();
 
-            return await result.Content.ReadAsStringAsync();
+            return JsonConvert.DeserializeObject<T>(await resp.Content.ReadAsStringAsync());
         }
 
         private class BlockInformation

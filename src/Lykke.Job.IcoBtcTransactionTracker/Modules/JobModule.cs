@@ -1,7 +1,8 @@
 ﻿using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Common.Log;
-using Lykke.Ico.Core.Repositories.InvestorAttribute;
+using Lykke.Ico.Core.Queues;
+using Lykke.Ico.Core.Queues.Transactions;
 using Lykke.Job.IcoBtcTransactionTracker.AzureRepositories;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.ProcessedBlocks;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
@@ -17,16 +18,21 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
     {
         private readonly IcoBtcTransactionTrackerSettings _settings;
         private readonly IReloadingManager<DbSettings> _dbSettingsManager;
+        private readonly IReloadingManager<AzureQueueSettings> _azureQueueSettingsManager;
         private readonly ILog _log;
         // NOTE: you can remove it if you don't need to use IServiceCollection extensions to register service specific dependencies
         private readonly IServiceCollection _services;
 
-        public JobModule(IcoBtcTransactionTrackerSettings settings, IReloadingManager<DbSettings> dbSettingsManager, ILog log)
+        public JobModule(
+            IcoBtcTransactionTrackerSettings settings, 
+            IReloadingManager<DbSettings> dbSettingsManager,
+            IReloadingManager<AzureQueueSettings> azureQueueSettingsManager,
+            ILog log)
         {
             _settings = settings;
             _log = log;
             _dbSettingsManager = dbSettingsManager;
-
+            _azureQueueSettingsManager = azureQueueSettingsManager;
             _services = new ServiceCollection();
         }
 
@@ -54,15 +60,15 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
 
             builder.RegisterType<ProcessedBlockRepository>()
                 .As<IProcessedBlockRepository>()
-                .WithParameter("connectionStringManager", _dbSettingsManager.Nested(x => x.DataConnString));
+                .WithParameter(TypedParameter.From(_dbSettingsManager.Nested(x => x.DataConnString)));
 
-            builder.RegisterType<InvestorAttributeRepository>()
-                .As<IInvestorAttributeRepository>()
-                .WithParameter("connectionStringManager", _dbSettingsManager.Nested(x => x.DataConnString));
+            builder.RegisterType<QueuePublisher<BlockchainTransactionMessage>>()
+                .As<IQueuePublisher<BlockchainTransactionMessage>>()
+                .WithParameter(TypedParameter.From(_azureQueueSettingsManager.Nested(x => x.ConnectionString)));
 
             builder.RegisterType<TransactionTrackingService>()
                 .As<ITransactionTrackingService>()
-                .WithParameter("trackingSettings", _settings.Tracking);
+                .WithParameter(TypedParameter.From(_settings.Tracking));
 
             RegisterPeriodicalHandlers(builder);
 
@@ -78,7 +84,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
             builder.RegisterType<TransactionTrackingHandler>()
                 .As<IStartable>()
                 .AutoActivate()
-                .WithParameter("trackingInterval", _settings.TrackingInterval)
+                .WithParameter(TypedParameter.From(_settings.TrackingInterval))
                 .SingleInstance();
         }
 

@@ -58,7 +58,10 @@ namespace Lykke.Job.IcoBtcTransactionTracker
 
                 Log = CreateLogWithSlack(services, appSettings);
 
-                builder.RegisterModule(new JobModule(appSettings.CurrentValue.IcoBtcTransactionTrackerJob, appSettings.Nested(x => x.IcoBtcTransactionTrackerJob.Db), Log));
+                builder.RegisterModule(new JobModule(appSettings.CurrentValue.IcoBtcTransactionTrackerJob, 
+                    appSettings.Nested(x => x.IcoBtcTransactionTrackerJob.Db),
+                    appSettings.Nested(x => x.IcoBtcTransactionTrackerJob.AzureQueue),
+                    Log));
 
                 builder.Populate(services);
 
