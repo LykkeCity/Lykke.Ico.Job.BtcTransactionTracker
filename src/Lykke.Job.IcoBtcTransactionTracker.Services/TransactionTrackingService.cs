@@ -75,11 +75,12 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
                     await _transactionQueue.SendAsync(new BlockchainTransactionMessage
                     {
-                        Amount = bitcoinAmount,
+                        BlockId = blockId,
                         BlockTimestamp = blockTimestamp,
-                        CurrencyType = CurrencyType.Bitcoin,
-                        DestinationAddress = destAddress.ToString(),
                         TransactionId = transactionId,
+                        DestinationAddress = destAddress.ToString(),
+                        CurrencyType = CurrencyType.Bitcoin,
+                        Amount = bitcoinAmount,
                     });
                 }
             }
