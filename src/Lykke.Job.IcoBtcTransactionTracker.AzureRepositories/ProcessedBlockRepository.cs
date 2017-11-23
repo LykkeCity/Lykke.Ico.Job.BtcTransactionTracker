@@ -27,9 +27,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.AzureRepositories
 
         public async Task<int> GetLastProcessedBlockAsync()
         {
-            var entity = await _tableStorage.GetDataAsync(GetPartitionKey(), GetPartitionKey());
+            var entity = await _tableStorage.GetDataAsync(GetPartitionKey(), GetRowKey());
 
-            if (entity != null)
+                if (entity != null)
                 return entity.Height;
             else
                 return 0;

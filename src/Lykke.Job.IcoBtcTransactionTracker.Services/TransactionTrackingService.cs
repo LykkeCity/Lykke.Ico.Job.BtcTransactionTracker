@@ -53,6 +53,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         {
             var blockInfo = await GetConfirmedBlockByHeightAsync(height);
             var block = Block.Parse(blockInfo.Block);
+            var blockId = blockInfo.AdditionalInformation.BlockId;
+            var blockTimestamp = blockInfo.AdditionalInformation.BlockTime;
 
             foreach (var tx in block.Transactions)
             {
@@ -68,14 +70,16 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                         continue;
                     }
 
+                    var bitcoinAmount = coin.Amount.ToUnit(MoneyUnit.BTC);
+                    var transactionId = coin.Outpoint.ToString();
+
                     await _transactionQueue.SendAsync(new BlockchainTransactionMessage
                     {
-                        Amount = coin.Amount.ToDecimal(MoneyUnit.BTC),
-                        BlockId = blockInfo.AdditionalInformation.BlockId,
-                        BlockTimestamp = blockInfo.AdditionalInformation.BlockTime,
+                        Amount = bitcoinAmount,
+                        BlockTimestamp = blockTimestamp,
                         CurrencyType = CurrencyType.Bitcoin,
                         DestinationAddress = destAddress.ToString(),
-                        TransactionId = coin.Outpoint.ToString(),
+                        TransactionId = transactionId,
                     });
                 }
             }

@@ -20,20 +20,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.PeriodicalHandlers
 
         public override async Task Execute()
         {
-            try
-            {
-                await _trackingService.Execute();
-            }
-            catch (Exception ex)
-            {
-                await _log.WriteErrorAsync(
-                    nameof(TransactionTrackingHandler),
-                    nameof(Execute),
-                    string.Empty,
-                    ex);
-
-                throw;
-            }
+            await _trackingService.Execute();
         }
     }
 }
