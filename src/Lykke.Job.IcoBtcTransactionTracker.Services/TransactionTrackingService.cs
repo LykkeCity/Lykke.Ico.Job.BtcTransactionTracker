@@ -2,10 +2,11 @@
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Common.Log;
 using Lykke.Ico.Core;
 using Lykke.Ico.Core.Queues;
 using Lykke.Ico.Core.Queues.Transactions;
-using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.ProcessedBlocks;
+using Lykke.Ico.Core.Repositories.ProcessedBlock;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using NBitcoin;
@@ -15,17 +16,22 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 {
     public class TransactionTrackingService : ITransactionTrackingService
     {
+        private readonly ILog _log;
         private readonly TrackingSettings _trackingSettings;
         private readonly IProcessedBlockRepository _processedBlockRepository;
         private readonly IQueuePublisher<BlockchainTransactionMessage> _transactionQueue;
         private readonly HttpClient _ninjaHttpClient = new HttpClient();
         private readonly Network _ninjaNetwork;
+        private readonly string _component = nameof(TransactionTrackingService);
+        private readonly string _process = nameof(Execute);
 
         public TransactionTrackingService(
+            ILog log,
             TrackingSettings trackingSettings, 
             IProcessedBlockRepository processedBlockRepository,
             IQueuePublisher<BlockchainTransactionMessage> transactionQueue)
         {
+            _log = log;
             _trackingSettings = trackingSettings;
             _processedBlockRepository = processedBlockRepository;
             _transactionQueue = transactionQueue;
@@ -35,7 +41,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
         public async Task Execute()
         {
-            var lastProcessedHeight = await _processedBlockRepository.GetLastProcessedBlockAsync();
+            var lastProcessedHeight = await _processedBlockRepository.GetLastProcessedBlockAsync(CurrencyType.Bitcoin, _ninjaNetwork.Name);
             var lastConfirmed = await GetLastConfirmedBlockAsync();
 
             if (lastProcessedHeight == 0)
@@ -43,18 +49,30 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 lastProcessedHeight = _trackingSettings.StartHeight;
             }
 
-            for (int h = lastProcessedHeight + 1; h <= lastConfirmed.AdditionalInformation.Height; h++)
+            if (lastProcessedHeight < lastConfirmed.AdditionalInformation.Height)
             {
-                await ProcessBlock(h);
+                var from = lastProcessedHeight + 1;
+                var to = lastConfirmed.AdditionalInformation.Height;
+                var txCount = 0;
+
+                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"Processing blocks {from} - {to} started");
+
+                for (int h = lastProcessedHeight + 1; h <= lastConfirmed.AdditionalInformation.Height; h++)
+                {
+                    txCount += await ProcessBlock(h);
+                }
+
+                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"{to - from} block processed; {txCount} payment transactions queued");
             }
         }
 
-        private async Task ProcessBlock(int height)
+        private async Task<int> ProcessBlock(int height)
         {
             var blockInfo = await GetConfirmedBlockByHeightAsync(height);
             var block = Block.Parse(blockInfo.Block);
             var blockId = blockInfo.AdditionalInformation.BlockId;
             var blockTimestamp = blockInfo.AdditionalInformation.BlockTime;
+            var txCount = 0;
 
             foreach (var tx in block.Transactions)
             {
@@ -82,10 +100,14 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                         CurrencyType = CurrencyType.Bitcoin,
                         Amount = bitcoinAmount,
                     });
+
+                    txCount++;
                 }
             }
 
-            await _processedBlockRepository.SetLastProcessedBlockAsync(height);
+            await _processedBlockRepository.SetLastProcessedBlockAsync(height, CurrencyType.Bitcoin, _ninjaNetwork.Name);
+
+            return txCount;
         }
 
         private async Task<BlockInformation> GetLastConfirmedBlockAsync()
