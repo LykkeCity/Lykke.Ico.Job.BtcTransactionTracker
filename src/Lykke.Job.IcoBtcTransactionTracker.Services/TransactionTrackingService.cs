@@ -53,16 +53,18 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             {
                 var from = lastProcessedHeight + 1;
                 var to = lastConfirmed.AdditionalInformation.Height;
+                var blockCount = to - lastProcessedHeight;
+                var blockRange = blockCount > 1 ? $"[{from} - {to}]" : $"[{to}]";
                 var txCount = 0;
 
-                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"Processing blocks {from} - {to} started");
+                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"Processing block(s) {blockRange} started");
 
-                for (int h = lastProcessedHeight + 1; h <= lastConfirmed.AdditionalInformation.Height; h++)
+                for (int h = from; h <= to; h++)
                 {
                     txCount += await ProcessBlock(h);
                 }
 
-                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"{to - from} block processed; {txCount} payment transactions queued");
+                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"{blockCount} block(s) processed; {txCount} payment transactions queued");
             }
         }
 
