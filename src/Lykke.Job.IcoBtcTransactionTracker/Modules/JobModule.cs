@@ -3,7 +3,7 @@ using Autofac.Extensions.DependencyInjection;
 using Common.Log;
 using Lykke.Ico.Core.Queues;
 using Lykke.Ico.Core.Queues.Transactions;
-using Lykke.Ico.Core.Repositories.ProcessedBlock;
+using Lykke.Ico.Core.Repositories.CampaignInfo;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using Lykke.Job.IcoBtcTransactionTracker.PeriodicalHandlers;
@@ -57,8 +57,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
             builder.RegisterType<ShutdownManager>()
                 .As<IShutdownManager>();
 
-            builder.RegisterType<ProcessedBlockRepository>()
-                .As<IProcessedBlockRepository>()
+            builder.RegisterType<CampaignInfoRepository>()
+                .As<ICampaignInfoRepository>()
                 .WithParameter(TypedParameter.From(_dbSettingsManager.Nested(x => x.DataConnString)));
 
             builder.RegisterType<QueuePublisher<BlockchainTransactionMessage>>()

@@ -6,9 +6,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings
 {
     public class TrackingSettings
     {
-        public int ConfirmationLimit { get; set; }
-        public string NinjaNetwork { get; set; }
-        public string NinjaUrl { get; set; }
-        public int StartHeight { get; set; }
+        public UInt16 ConfirmationLimit { get; set; }
+        public String NinjaNetwork { get; set; }
+        public String NinjaUrl { get; set; }
+        public UInt64 StartHeight { get; set; }
     }
 }

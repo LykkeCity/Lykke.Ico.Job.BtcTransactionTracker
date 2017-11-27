@@ -6,7 +6,7 @@ using Common.Log;
 using Lykke.Ico.Core;
 using Lykke.Ico.Core.Queues;
 using Lykke.Ico.Core.Queues.Transactions;
-using Lykke.Ico.Core.Repositories.ProcessedBlock;
+using Lykke.Ico.Core.Repositories.CampaignInfo;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using NBitcoin;
@@ -18,7 +18,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
     {
         private readonly ILog _log;
         private readonly TrackingSettings _trackingSettings;
-        private readonly IProcessedBlockRepository _processedBlockRepository;
+        private readonly ICampaignInfoRepository _campaignInfoRepository;
         private readonly IQueuePublisher<BlockchainTransactionMessage> _transactionQueue;
         private readonly HttpClient _ninjaHttpClient = new HttpClient();
         private readonly Network _ninjaNetwork;
@@ -28,12 +28,12 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         public TransactionTrackingService(
             ILog log,
             TrackingSettings trackingSettings, 
-            IProcessedBlockRepository processedBlockRepository,
+            ICampaignInfoRepository campaignInfoRepository,
             IQueuePublisher<BlockchainTransactionMessage> transactionQueue)
         {
             _log = log;
             _trackingSettings = trackingSettings;
-            _processedBlockRepository = processedBlockRepository;
+            _campaignInfoRepository = campaignInfoRepository;
             _transactionQueue = transactionQueue;
             _ninjaNetwork = Network.GetNetwork(trackingSettings.NinjaNetwork) ?? Network.RegTest;
             _ninjaHttpClient.BaseAddress = new Uri(trackingSettings.NinjaUrl);  
@@ -41,34 +41,38 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
         public async Task Execute()
         {
-            var lastProcessedHeight = await _processedBlockRepository.GetLastProcessedBlockAsync(CurrencyType.Bitcoin, _ninjaNetwork.Name);
+            ulong lastProcessedHeight = 0;
             var lastConfirmed = await GetLastConfirmedBlockAsync();
 
-            if (lastProcessedHeight == 0)
+            if (!ulong.TryParse(await _campaignInfoRepository.GetValueAsync(CampaignInfoType.LastProcessedBlockBtc), out lastProcessedHeight) ||
+                lastProcessedHeight == 0)
             {
                 lastProcessedHeight = _trackingSettings.StartHeight;
             }
 
-            if (lastProcessedHeight < lastConfirmed.AdditionalInformation.Height)
+            if (lastProcessedHeight >= lastConfirmed.AdditionalInformation.Height)
             {
-                var from = lastProcessedHeight + 1;
-                var to = lastConfirmed.AdditionalInformation.Height;
-                var blockCount = to - lastProcessedHeight;
-                var blockRange = blockCount > 1 ? $"[{from} - {to}]" : $"[{to}]";
-                var txCount = 0;
-
-                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"Processing block(s) {blockRange} started");
-
-                for (int h = from; h <= to; h++)
-                {
-                    txCount += await ProcessBlock(h);
-                }
-
-                await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"{blockCount} block(s) processed; {txCount} payment transactions queued");
+                // all processed or start height is greater than current height
+                return;
             }
+
+            var from = lastProcessedHeight + 1;
+            var to = lastConfirmed.AdditionalInformation.Height;
+            var blockCount = to - lastProcessedHeight;
+            var blockRange = blockCount > 1 ? $"[{from} - {to}]" : $"[{to}]";
+            var txCount = 0;
+
+            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"Processing block(s) {blockRange} started");
+
+            for (var h = from; h <= to; h++)
+            {
+                txCount += await ProcessBlock(h);
+            }
+
+            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"{blockCount} block(s) processed; {txCount} payment transactions queued");
         }
 
-        private async Task<int> ProcessBlock(int height)
+        private async Task<int> ProcessBlock(ulong height)
         {
             var blockInfo = await GetConfirmedBlockByHeightAsync(height);
             var block = Block.Parse(blockInfo.Block);
@@ -107,7 +111,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 }
             }
 
-            await _processedBlockRepository.SetLastProcessedBlockAsync(height, CurrencyType.Bitcoin, _ninjaNetwork.Name);
+            await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, height.ToString());
 
             return txCount;
         }
@@ -120,7 +124,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             return await DoNinjaRequest<BlockInformation>(url);
         }
 
-        private async Task<BlockInformation> GetConfirmedBlockByHeightAsync(int height)
+        private async Task<BlockInformation> GetConfirmedBlockByHeightAsync(UInt64 height)
         {
             return await DoNinjaRequest<BlockInformation>($"blocks/{height}");
         }
@@ -137,15 +141,15 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private class BlockInformation
         {
             public BlockAdditionalInformation AdditionalInformation { get; set; }
-            public string Block { get; set; }
+            public String Block { get; set; }
         }
 
         private class BlockAdditionalInformation
         {
-            public string BlockId { get; set; }
+            public String BlockId { get; set; }
             public DateTimeOffset BlockTime { get; set; }
-            public int Height { get; set; }
-            public int Confirmations { get; set; }
+            public UInt64 Height { get; set; }
+            public UInt64 Confirmations { get; set; }
         }
     }
 }
