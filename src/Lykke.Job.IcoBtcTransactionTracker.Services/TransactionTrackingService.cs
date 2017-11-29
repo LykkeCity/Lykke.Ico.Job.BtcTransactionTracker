@@ -20,29 +20,34 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private readonly TrackingSettings _trackingSettings;
         private readonly ICampaignInfoRepository _campaignInfoRepository;
         private readonly IQueuePublisher<BlockchainTransactionMessage> _transactionQueue;
-        private readonly HttpClient _ninjaHttpClient = new HttpClient();
+        private readonly IBlockchainReader _blockchainReader;
         private readonly Network _ninjaNetwork;
         private readonly string _component = nameof(TransactionTrackingService);
         private readonly string _process = nameof(Execute);
+        private readonly string _link;
 
         public TransactionTrackingService(
             ILog log,
             TrackingSettings trackingSettings, 
             ICampaignInfoRepository campaignInfoRepository,
-            IQueuePublisher<BlockchainTransactionMessage> transactionQueue)
+            IQueuePublisher<BlockchainTransactionMessage> transactionQueue,
+            IBlockchainReader blockchainReader)
         {
             _log = log;
             _trackingSettings = trackingSettings;
             _campaignInfoRepository = campaignInfoRepository;
             _transactionQueue = transactionQueue;
-            _ninjaNetwork = Network.GetNetwork(trackingSettings.NinjaNetwork) ?? Network.RegTest;
-            _ninjaHttpClient.BaseAddress = new Uri(trackingSettings.NinjaUrl);  
+            _blockchainReader = blockchainReader;
+            _ninjaNetwork = Network.GetNetwork(trackingSettings.NinjaNetwork) ?? Network.TestNet;
+            _link = _ninjaNetwork == Network.Main ?
+                "https://blockchainexplorer.lykke.com/transaction" :
+                "https://live.blockcypher.com/btc-testnet/tx";
         }
 
         public async Task Execute()
         {
             ulong lastProcessedHeight = 0;
-            var lastConfirmed = await GetLastConfirmedBlockAsync();
+            var lastConfirmed = await _blockchainReader.GetLastConfirmedBlockAsync(_trackingSettings.ConfirmationLimit);
 
             if (!ulong.TryParse(await _campaignInfoRepository.GetValueAsync(CampaignInfoType.LastProcessedBlockBtc), out lastProcessedHeight) ||
                 lastProcessedHeight == 0)
@@ -74,7 +79,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
         private async Task<int> ProcessBlock(ulong height)
         {
-            var blockInfo = await GetConfirmedBlockByHeightAsync(height);
+            var blockInfo = await _blockchainReader.GetBlockByHeightAsync(height);
             var block = Block.Parse(blockInfo.Block);
             var blockId = blockInfo.AdditionalInformation.BlockId;
             var blockTimestamp = blockInfo.AdditionalInformation.BlockTime;
@@ -96,6 +101,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
                     var bitcoinAmount = coin.Amount.ToUnit(MoneyUnit.BTC);
                     var transactionId = coin.Outpoint.ToString();
+                    var link = $"{_link}/{coin.Outpoint.Hash}";
 
                     await _transactionQueue.SendAsync(new BlockchainTransactionMessage
                     {
@@ -105,6 +111,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                         DestinationAddress = destAddress.ToString(),
                         CurrencyType = CurrencyType.Bitcoin,
                         Amount = bitcoinAmount,
+                        Link = link
                     });
 
                     txCount++;
@@ -114,42 +121,6 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, height.ToString());
 
             return txCount;
-        }
-
-        private async Task<BlockInformation> GetLastConfirmedBlockAsync()
-        {
-            var backTo = _trackingSettings.ConfirmationLimit > 0 ? _trackingSettings.ConfirmationLimit - 1 : 0;
-            var url = $"blocks/tip-{backTo}?format=json&headeronly=true";
-
-            return await DoNinjaRequest<BlockInformation>(url);
-        }
-
-        private async Task<BlockInformation> GetConfirmedBlockByHeightAsync(UInt64 height)
-        {
-            return await DoNinjaRequest<BlockInformation>($"blocks/{height}");
-        }
-
-        private async Task<T> DoNinjaRequest<T>(string url)
-        {
-            var resp = await _ninjaHttpClient.GetAsync(url);
-
-            resp.EnsureSuccessStatusCode();
-
-            return JsonConvert.DeserializeObject<T>(await resp.Content.ReadAsStringAsync());
-        }
-
-        private class BlockInformation
-        {
-            public BlockAdditionalInformation AdditionalInformation { get; set; }
-            public String Block { get; set; }
-        }
-
-        private class BlockAdditionalInformation
-        {
-            public String BlockId { get; set; }
-            public DateTimeOffset BlockTime { get; set; }
-            public UInt64 Height { get; set; }
-            public UInt64 Confirmations { get; set; }
         }
     }
 }

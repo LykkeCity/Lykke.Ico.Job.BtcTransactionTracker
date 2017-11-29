@@ -65,6 +65,10 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
                 .As<IQueuePublisher<BlockchainTransactionMessage>>()
                 .WithParameter(TypedParameter.From(_azureQueueSettingsManager.Nested(x => x.ConnectionString)));
 
+            builder.RegisterType<BlockchainReader>()
+                .As<IBlockchainReader>()
+                .WithParameter(TypedParameter.From(_settings.Tracking.NinjaUrl));
+
             builder.RegisterType<TransactionTrackingService>()
                 .As<ITransactionTrackingService>()
                 .WithParameter(TypedParameter.From(_settings.Tracking));
