@@ -72,7 +72,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             var blockRange = blockCount > 1 ? $"[{from} - {to}]" : $"[{to}]";
             var txCount = 0;
 
-            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"Processing block(s) {blockRange} started");
+            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
+                $"Processing block(s) {blockRange} started");
 
             for (var h = from; h <= to; h++)
             {
@@ -80,7 +81,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, h.ToString());
             }
 
-            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"{blockCount} block(s) processed; {txCount} payment transactions queued");
+            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
+                $"Processing block(s) {blockRange} completed; {blockCount} block(s) processed; {txCount} payment transactions queued");
         }
 
         private async Task<int> ProcessBlock(ulong height)
@@ -88,7 +90,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             var blockInfo = await _blockchainReader.GetBlockByHeightAsync(height);
             if (blockInfo == null)
             {
-                await _log.WriteWarningAsync(_component, _process, _ninjaNetwork.Name, $"Block [{height}] not found or invalid; block skipped");
+                await _log.WriteWarningAsync(_component, _process, _ninjaNetwork.Name, 
+                    $"Block [{height}] not found or invalid; block skipped");
                 return 0;
             }
 
@@ -129,6 +132,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                     txCount++;
                 }
             }
+
+            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
+                $"Block [{height}] processed; {txCount} payment transactions queued");
 
             return txCount;
         }
