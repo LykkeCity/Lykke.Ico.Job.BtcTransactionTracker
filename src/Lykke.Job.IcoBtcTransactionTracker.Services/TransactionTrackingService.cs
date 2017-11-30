@@ -47,7 +47,12 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         public async Task Execute()
         {
             ulong lastProcessedHeight = 0;
+
             var lastConfirmed = await _blockchainReader.GetLastConfirmedBlockAsync(_trackingSettings.ConfirmationLimit);
+            if (lastConfirmed == null)
+            {
+                throw new InvalidOperationException("Cannot get last confirmed block");
+            }
 
             if (!ulong.TryParse(await _campaignInfoRepository.GetValueAsync(CampaignInfoType.LastProcessedBlockBtc), out lastProcessedHeight) ||
                 lastProcessedHeight == 0)
@@ -72,6 +77,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             for (var h = from; h <= to; h++)
             {
                 txCount += await ProcessBlock(h);
+                await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, h.ToString());
             }
 
             await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, $"{blockCount} block(s) processed; {txCount} payment transactions queued");
@@ -80,6 +86,12 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private async Task<int> ProcessBlock(ulong height)
         {
             var blockInfo = await _blockchainReader.GetBlockByHeightAsync(height);
+            if (blockInfo == null)
+            {
+                await _log.WriteWarningAsync(_component, _process, _ninjaNetwork.Name, $"Block [{height}] not found or invalid; block skipped");
+                return 0;
+            }
+
             var block = Block.Parse(blockInfo.Block);
             var blockId = blockInfo.AdditionalInformation.BlockId;
             var blockTimestamp = blockInfo.AdditionalInformation.BlockTime;
@@ -117,8 +129,6 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                     txCount++;
                 }
             }
-
-            await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, height.ToString());
 
             return txCount;
         }

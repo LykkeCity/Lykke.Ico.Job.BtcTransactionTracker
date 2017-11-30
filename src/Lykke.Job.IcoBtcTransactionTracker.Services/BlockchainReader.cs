@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using Common.Log;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Newtonsoft.Json;
@@ -11,10 +13,13 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 {
     public class BlockchainReader : IBlockchainReader
     {
+        private readonly ILog _log;
         private readonly HttpClient _ninjaHttpClient = new HttpClient();
+        private readonly string _component = nameof(BlockchainReader);
 
-        public BlockchainReader(string ninjaUrl)
+        public BlockchainReader(ILog log, string ninjaUrl)
         {
+            _log = log;
             _ninjaHttpClient.BaseAddress = new Uri(ninjaUrl);
         }
 
@@ -32,13 +37,40 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             return await DoNinjaRequest<BlockInformation>($"blocks/{height}");
         }
 
-        private async Task<T> DoNinjaRequest<T>(String url)
+        private async Task<T> DoNinjaRequest<T>(String url) where T : class
         {
+            var proc = nameof(DoNinjaRequest);
+
             var resp = await _ninjaHttpClient.GetAsync(url);
 
-            resp.EnsureSuccessStatusCode();
+            try
+            {
+                resp.EnsureSuccessStatusCode();
+            }
+            catch (HttpRequestException ex)
+            {
+                if (resp.StatusCode == HttpStatusCode.NotFound)
+                {
+                    await _log.WriteErrorAsync(_component, proc, url, ex);
+                    return null;
+                }
+                else
+                {
+                    throw;
+                }
+            }
 
-            return JsonConvert.DeserializeObject<T>(await resp.Content.ReadAsStringAsync());
+            var json = await resp.Content.ReadAsStringAsync();
+
+            try
+            {
+                return JsonConvert.DeserializeObject<T>(json);
+            }
+            catch (JsonSerializationException ex)
+            {
+                await _log.WriteErrorAsync(_component, proc, json, ex);
+                return null;
+            }
         }
     }
 }
