@@ -7,6 +7,7 @@ using Lykke.Ico.Core;
 using Lykke.Ico.Core.Queues;
 using Lykke.Ico.Core.Queues.Transactions;
 using Lykke.Ico.Core.Repositories.CampaignInfo;
+using Lykke.Ico.Core.Repositories.InvestorAttribute;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using NBitcoin;
@@ -19,6 +20,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private readonly ILog _log;
         private readonly TrackingSettings _trackingSettings;
         private readonly ICampaignInfoRepository _campaignInfoRepository;
+        private readonly IInvestorAttributeRepository _investorAttributeRepository;
         private readonly IQueuePublisher<BlockchainTransactionMessage> _transactionQueue;
         private readonly IBlockchainReader _blockchainReader;
         private readonly Network _ninjaNetwork;
@@ -30,12 +32,14 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             ILog log,
             TrackingSettings trackingSettings, 
             ICampaignInfoRepository campaignInfoRepository,
+            IInvestorAttributeRepository investorAttributeRepository,
             IQueuePublisher<BlockchainTransactionMessage> transactionQueue,
             IBlockchainReader blockchainReader)
         {
             _log = log;
             _trackingSettings = trackingSettings;
             _campaignInfoRepository = campaignInfoRepository;
+            _investorAttributeRepository = investorAttributeRepository;
             _transactionQueue = transactionQueue;
             _blockchainReader = blockchainReader;
             _ninjaNetwork = Network.GetNetwork(trackingSettings.NinjaNetwork) ?? Network.TestNet;
@@ -114,12 +118,20 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                         continue;
                     }
 
+                    var investorEmail = await _investorAttributeRepository.GetInvestorEmailAsync(InvestorAttributeType.PayInBtcAddress, destAddress.ToString());
+                    if (string.IsNullOrWhiteSpace(investorEmail))
+                    {
+                        // destination address is not a cash-in address of any ICO investor
+                        continue;
+                    }
+
                     var bitcoinAmount = coin.Amount.ToUnit(MoneyUnit.BTC);
                     var transactionId = coin.Outpoint.ToString();
                     var link = $"{_link}/{coin.Outpoint.Hash}";
 
                     await _transactionQueue.SendAsync(new BlockchainTransactionMessage
                     {
+                        InvestorEmail = investorEmail,
                         BlockId = blockId,
                         BlockTimestamp = blockTimestamp,
                         TransactionId = transactionId,
@@ -134,7 +146,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             }
 
             await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
-                $"Block [{height}] processed; {txCount} payment transactions queued");
+                $"Block [{height}] processed; {txCount} investment transactions queued");
 
             return txCount;
         }

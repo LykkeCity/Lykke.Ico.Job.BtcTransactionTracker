@@ -7,6 +7,7 @@ using Lykke.Ico.Core;
 using Lykke.Ico.Core.Queues;
 using Lykke.Ico.Core.Queues.Transactions;
 using Lykke.Ico.Core.Repositories.CampaignInfo;
+using Lykke.Ico.Core.Repositories.InvestorAttribute;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
@@ -23,6 +24,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
         private ILog _log;
         private TrackingSettings _trackingSettings;
         private Mock<ICampaignInfoRepository> _campaignInfoRepository;
+        private Mock<IInvestorAttributeRepository> _investorAttributeRepository;
         private Mock<IQueuePublisher<BlockchainTransactionMessage>> _transactionQueue;
         private Mock<IBlockchainReader> _blockchainReader;
         private Network _network = Network.TestNet;
@@ -52,6 +54,14 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
                 .Callback((CampaignInfoType t, string v) => _lastProcessed = v)
                 .Returns(() => Task.CompletedTask);
 
+            _investorAttributeRepository = new Mock<IInvestorAttributeRepository>();
+
+            _investorAttributeRepository
+                .Setup(m => m.GetInvestorEmailAsync(
+                    It.IsIn(new InvestorAttributeType[] { InvestorAttributeType.PayInBtcAddress, InvestorAttributeType.PayInEthAddress }),
+                    It.IsAny<string>()))
+                .Returns(() => Task.FromResult("test@test.test"));
+
             _transactionQueue = new Mock<IQueuePublisher<BlockchainTransactionMessage>>();
 
             _transactionQueue
@@ -78,6 +88,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
                 _log,
                 _trackingSettings,
                 _campaignInfoRepository.Object,
+                _investorAttributeRepository.Object,
                 _transactionQueue.Object,
                 _blockchainReader.Object);
         }
