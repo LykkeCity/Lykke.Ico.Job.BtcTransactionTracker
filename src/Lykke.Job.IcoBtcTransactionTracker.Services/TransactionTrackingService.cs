@@ -86,7 +86,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             }
 
             await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
-                $"Processing block(s) {blockRange} completed; {blockCount} block(s) processed; {txCount} payment transactions queued");
+                $"Processing block(s) {blockRange} completed; {blockCount} block(s) processed; {txCount} investments queued");
         }
 
         private async Task<int> ProcessBlock(ulong height)
@@ -146,7 +146,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             }
 
             await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
-                $"Block [{height}] processed; {txCount} investment transactions queued");
+                $"Block [{height}] processed; {txCount} investments queued");
 
             return txCount;
         }
