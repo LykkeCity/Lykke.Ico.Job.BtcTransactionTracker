@@ -25,7 +25,6 @@
   <ItemGroup>
     <PackageReference Include="Lykke.Common" Version="3.0.2" />
     <PackageReference Include="Lykke.Common.ApiLibrary" Version="1.0.18" />
-    <PackageReference Include="Lykke.Ico.Core" Version="1.0.67" />
     <!-- #if azurequeuesub -->
     <PackageReference Include="Lykke.JobTriggers" Version="1.1.19" />
     <!-- #endif -->
@@ -51,7 +50,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Lykke.Job.IcoBtcTransactionTracker.AzureRepositories\Lykke.Job.IcoBtcTransactionTracker.AzureRepositories.csproj" />
     <ProjectReference Include="..\Lykke.Job.IcoBtcTransactionTracker.Core\Lykke.Job.IcoBtcTransactionTracker.Core.csproj" />
     <ProjectReference Include="..\Lykke.Job.IcoBtcTransactionTracker.Services\Lykke.Job.IcoBtcTransactionTracker.Services.csproj" />
   </ItemGroup>

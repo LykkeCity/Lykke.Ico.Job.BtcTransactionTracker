@@ -72,7 +72,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
 
             builder.RegisterType<BlockchainReader>()
                 .As<IBlockchainReader>()
-                .WithParameter(TypedParameter.From(_settings.Tracking.NinjaUrl));
+                .WithParameter(TypedParameter.From(_settings.Tracking.BtcUrl));
 
             builder.RegisterType<TransactionTrackingService>()
                 .As<ITransactionTrackingService>()

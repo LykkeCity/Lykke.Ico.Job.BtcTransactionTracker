@@ -23,7 +23,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private readonly IInvestorAttributeRepository _investorAttributeRepository;
         private readonly IQueuePublisher<BlockchainTransactionMessage> _transactionQueue;
         private readonly IBlockchainReader _blockchainReader;
-        private readonly Network _ninjaNetwork;
+        private readonly Network _network;
         private readonly string _component = nameof(TransactionTrackingService);
         private readonly string _process = nameof(Execute);
         private readonly string _link;
@@ -42,24 +42,22 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             _investorAttributeRepository = investorAttributeRepository;
             _transactionQueue = transactionQueue;
             _blockchainReader = blockchainReader;
-            _ninjaNetwork = Network.GetNetwork(trackingSettings.NinjaNetwork) ?? Network.TestNet;
-            _link = _ninjaNetwork == Network.Main ?
+            _network = Network.GetNetwork(trackingSettings.BtcNetwork) ?? Network.TestNet;
+            _link = _network == Network.Main ?
                 "https://blockchainexplorer.lykke.com/transaction" :
                 "https://live.blockcypher.com/btc-testnet/tx";
         }
 
         public async Task Execute()
         {
-            ulong lastProcessedHeight = 0;
-
             var lastConfirmed = await _blockchainReader.GetLastConfirmedBlockAsync(_trackingSettings.ConfirmationLimit);
             if (lastConfirmed == null)
             {
                 throw new InvalidOperationException("Cannot get last confirmed block");
             }
 
-            if (!ulong.TryParse(await _campaignInfoRepository.GetValueAsync(CampaignInfoType.LastProcessedBlockBtc), out lastProcessedHeight) ||
-                lastProcessedHeight == 0)
+            var lastProcessedBlockBtc = await _campaignInfoRepository.GetValueAsync(CampaignInfoType.LastProcessedBlockBtc);
+            if (!ulong.TryParse(lastProcessedBlockBtc, out var lastProcessedHeight) || lastProcessedHeight == 0)
             {
                 lastProcessedHeight = _trackingSettings.StartHeight;
             }
@@ -76,7 +74,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             var blockRange = blockCount > 1 ? $"[{from} - {to}]" : $"[{to}]";
             var txCount = 0;
 
-            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
+            await _log.WriteInfoAsync(_component, _process, _network.Name, 
                 $"Processing block(s) {blockRange} started");
 
             for (var h = from; h <= to; h++)
@@ -85,7 +83,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, h.ToString());
             }
 
-            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
+            await _log.WriteInfoAsync(_component, _process, _network.Name, 
                 $"Processing block(s) {blockRange} completed; {blockCount} block(s) processed; {txCount} investments queued");
         }
 
@@ -94,7 +92,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             var blockInfo = await _blockchainReader.GetBlockByHeightAsync(height);
             if (blockInfo == null)
             {
-                await _log.WriteWarningAsync(_component, _process, _ninjaNetwork.Name, 
+                await _log.WriteWarningAsync(_component, nameof(ProcessBlock), _network.Name, 
                     $"Block [{height}] not found or invalid; block skipped");
                 return 0;
             }
@@ -111,7 +109,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
                 foreach (var coin in coins)
                 {
-                    var destAddress = coin.ScriptPubKey.GetDestinationAddress(_ninjaNetwork);
+                    var destAddress = coin.ScriptPubKey.GetDestinationAddress(_network);
                     if (destAddress == null)
                     {
                         // not a payment
@@ -145,7 +143,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 }
             }
 
-            await _log.WriteInfoAsync(_component, _process, _ninjaNetwork.Name, 
+            await _log.WriteInfoAsync(_component, nameof(ProcessBlock), _network.Name, 
                 $"Block [{height}] processed; {txCount} investments queued");
 
             return txCount;

@@ -41,7 +41,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             blockFactory = blockFactory ?? defaultBlockFactory;
 
             _lastProcessed = lastProcessed.ToString();
-            _trackingSettings = new TrackingSettings { ConfirmationLimit = 0, StartHeight = startHeight, NinjaNetwork = _network.Name };
+            _trackingSettings = new TrackingSettings { ConfirmationLimit = 0, StartHeight = startHeight, BtcNetwork = _network.Name };
             _log = new LogToMemory();
             _campaignInfoRepository = new Mock<ICampaignInfoRepository>();
 
