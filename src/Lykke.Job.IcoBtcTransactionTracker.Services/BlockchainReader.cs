@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
 using Common.Log;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
@@ -39,8 +37,6 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
         private async Task<T> DoNinjaRequest<T>(String url) where T : class
         {
-            var proc = nameof(DoNinjaRequest);
-
             var resp = await _ninjaHttpClient.GetAsync(url);
 
             try
@@ -51,7 +47,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             {
                 if (resp.StatusCode == HttpStatusCode.NotFound)
                 {
-                    await _log.WriteErrorAsync(_component, proc, url, ex);
+                    await _log.WriteErrorAsync(_component, nameof(DoNinjaRequest), url, ex);
                     return null;
                 }
                 else
@@ -68,7 +64,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             }
             catch (JsonSerializationException ex)
             {
-                await _log.WriteErrorAsync(_component, proc, json, ex);
+                await _log.WriteErrorAsync(_component, nameof(DoNinjaRequest), json, ex);
                 return null;
             }
         }

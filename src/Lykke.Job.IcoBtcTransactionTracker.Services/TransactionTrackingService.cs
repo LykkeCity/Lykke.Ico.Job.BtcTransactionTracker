@@ -26,7 +26,6 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private readonly Network _network;
         private readonly string _component = nameof(TransactionTrackingService);
         private readonly string _process = nameof(Execute);
-        private readonly string _link;
 
         public TransactionTrackingService(
             ILog log,
@@ -42,10 +41,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             _investorAttributeRepository = investorAttributeRepository;
             _transactionQueue = transactionQueue;
             _blockchainReader = blockchainReader;
-            _network = Network.GetNetwork(trackingSettings.BtcNetwork) ?? Network.TestNet;
-            _link = _network == Network.Main ?
-                "https://blockchainexplorer.lykke.com/transaction" :
-                "https://live.blockcypher.com/btc-testnet/tx";
+            _network = Network.GetNetwork(trackingSettings.BtcNetwork);
         }
 
         public async Task Execute()
@@ -125,7 +121,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
                     var bitcoinAmount = coin.Amount.ToUnit(MoneyUnit.BTC);
                     var transactionId = coin.Outpoint.ToString();
-                    var link = $"{_link}/{coin.Outpoint.Hash}";
+                    var link = $"{_trackingSettings.BtcTrackerUrl}tx/{coin.Outpoint.Hash}";
 
                     await _transactionQueue.SendAsync(new BlockchainTransactionMessage
                     {
