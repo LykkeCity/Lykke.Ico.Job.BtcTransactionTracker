@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Common.Log;
@@ -25,7 +24,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
         private TrackingSettings _trackingSettings;
         private Mock<ICampaignInfoRepository> _campaignInfoRepository;
         private Mock<IInvestorAttributeRepository> _investorAttributeRepository;
-        private Mock<IQueuePublisher<BlockchainTransactionMessage>> _transactionQueue;
+        private Mock<IQueuePublisher<TransactionMessage>> _transactionQueue;
         private Mock<IBlockchainReader> _blockchainReader;
         private Network _network = Network.TestNet;
         private string _lastProcessed = string.Empty;
@@ -62,10 +61,10 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
                     It.IsAny<string>()))
                 .Returns(() => Task.FromResult("test@test.test"));
 
-            _transactionQueue = new Mock<IQueuePublisher<BlockchainTransactionMessage>>();
+            _transactionQueue = new Mock<IQueuePublisher<TransactionMessage>>();
 
             _transactionQueue
-                .Setup(m => m.SendAsync(It.IsAny<BlockchainTransactionMessage>()))
+                .Setup(m => m.SendAsync(It.IsAny<TransactionMessage>()))
                 .Returns(() => Task.CompletedTask);
 
             _blockchainReader = new Mock<IBlockchainReader>();
@@ -128,7 +127,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
 
             // Assert
             Assert.Equal(lastConfirmed.ToString(), _lastProcessed);
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<BlockchainTransactionMessage>()), Times.Exactly((int)lastConfirmed));
+            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Exactly((int)lastConfirmed));
         }
 
         [Fact]
@@ -140,7 +139,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             var satoshi = Money.Satoshis(1);
             var btc = satoshi.ToUnit(MoneyUnit.BTC);
             var block = CreateBlock(1, satoshi, testKey);
-            var transaction = Block.Parse(block.Block).Transactions.First().Outputs.AsCoins().First().Outpoint.ToString();
+            var uniqueId = Block.Parse(block.Block).Transactions.First().Outputs.AsCoins().First().Outpoint.ToString();
+            var transactionId = Block.Parse(block.Block).Transactions.First().Outputs.AsCoins().First().Outpoint.Hash.ToString();
             var svc = Init(
                 lastProcessed: 0,
                 lastConfirmed: 1,
@@ -150,13 +150,14 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Execute();
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.Is<BlockchainTransactionMessage>(msg =>
+            _transactionQueue.Verify(m => m.SendAsync(It.Is<TransactionMessage>(msg =>
                 msg.Amount == btc &&
                 msg.BlockId == block.AdditionalInformation.BlockId &&
-                msg.BlockTimestamp == block.AdditionalInformation.BlockTime &&
-                msg.CurrencyType == CurrencyType.Bitcoin &&
-                msg.DestinationAddress == testAddress &&
-                msg.TransactionId == transaction)));
+                msg.CreatedUtc == block.AdditionalInformation.BlockTime.UtcDateTime &&
+                msg.Currency == CurrencyType.Bitcoin &&
+                msg.PayInAddress == testAddress &&
+                msg.TransactionId == transactionId &&
+                msg.UniqueId == uniqueId)));
         }
     }
 }

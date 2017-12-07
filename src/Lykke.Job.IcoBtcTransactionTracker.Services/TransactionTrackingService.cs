@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Common.Log;
 using Lykke.Ico.Core;
@@ -11,7 +10,6 @@ using Lykke.Ico.Core.Repositories.InvestorAttribute;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using NBitcoin;
-using Newtonsoft.Json;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Services
 {
@@ -21,7 +19,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
         private readonly TrackingSettings _trackingSettings;
         private readonly ICampaignInfoRepository _campaignInfoRepository;
         private readonly IInvestorAttributeRepository _investorAttributeRepository;
-        private readonly IQueuePublisher<BlockchainTransactionMessage> _transactionQueue;
+        private readonly IQueuePublisher<TransactionMessage> _transactionQueue;
         private readonly IBlockchainReader _blockchainReader;
         private readonly Network _network;
         private readonly string _component = nameof(TransactionTrackingService);
@@ -32,7 +30,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             TrackingSettings trackingSettings, 
             ICampaignInfoRepository campaignInfoRepository,
             IInvestorAttributeRepository investorAttributeRepository,
-            IQueuePublisher<BlockchainTransactionMessage> transactionQueue,
+            IQueuePublisher<TransactionMessage> transactionQueue,
             IBlockchainReader blockchainReader)
         {
             _log = log;
@@ -95,14 +93,12 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
             var block = Block.Parse(blockInfo.Block);
             var blockId = blockInfo.AdditionalInformation.BlockId;
-            var blockTimestamp = blockInfo.AdditionalInformation.BlockTime;
+            var blockTime = blockInfo.AdditionalInformation.BlockTime;
             var txCount = 0;
 
             foreach (var tx in block.Transactions)
             {
-                var coins = tx.Outputs.AsCoins()
-                    .Where(c => c.ScriptPubKey.IsValid && c.Amount.Satoshi > 0);
-
+                var coins = tx.Outputs.AsCoins().Where(c => c.ScriptPubKey.IsValid && c.Amount.Satoshi > 0);
                 foreach (var coin in coins)
                 {
                     var destAddress = coin.ScriptPubKey.GetDestinationAddress(_network);
@@ -119,20 +115,19 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                         continue;
                     }
 
-                    var bitcoinAmount = coin.Amount.ToUnit(MoneyUnit.BTC);
-                    var transactionId = coin.Outpoint.ToString();
-                    var link = $"{_trackingSettings.BtcTrackerUrl}tx/{coin.Outpoint.Hash}";
+                    var transactionId = coin.Outpoint.Hash.ToString();
 
-                    await _transactionQueue.SendAsync(new BlockchainTransactionMessage
+                    await _transactionQueue.SendAsync(new TransactionMessage
                     {
-                        InvestorEmail = investorEmail,
-                        BlockId = blockId,
-                        BlockTimestamp = blockTimestamp,
+                        Email = investorEmail,
+                        UniqueId = coin.Outpoint.ToString(),
+                        Currency = CurrencyType.Bitcoin,
                         TransactionId = transactionId,
-                        DestinationAddress = destAddress.ToString(),
-                        CurrencyType = CurrencyType.Bitcoin,
-                        Amount = bitcoinAmount,
-                        Link = link
+                        BlockId = blockId,
+                        CreatedUtc = blockTime.UtcDateTime,
+                        PayInAddress = destAddress.ToString(),
+                        Amount = coin.Amount.ToUnit(MoneyUnit.BTC),
+                        Link = $"{_trackingSettings.BtcTrackerUrl}tx/{transactionId}"
                     });
 
                     txCount++;
