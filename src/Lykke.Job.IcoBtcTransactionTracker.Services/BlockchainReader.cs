@@ -13,7 +13,6 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
     {
         private readonly ILog _log;
         private readonly HttpClient _ninjaHttpClient = new HttpClient();
-        private readonly string _component = nameof(BlockchainReader);
 
         public BlockchainReader(ILog log, string ninjaUrl)
         {
@@ -47,7 +46,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             {
                 if (resp.StatusCode == HttpStatusCode.NotFound)
                 {
-                    await _log.WriteErrorAsync(_component, nameof(DoNinjaRequest), url, ex);
+                    await _log.WriteErrorAsync(nameof(DoNinjaRequest), $"Url: {url}", ex);
                     return null;
                 }
                 else
@@ -64,7 +63,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             }
             catch (JsonSerializationException ex)
             {
-                await _log.WriteErrorAsync(_component, nameof(DoNinjaRequest), json, ex);
+                await _log.WriteErrorAsync(nameof(DoNinjaRequest), $"Url: {url}, Response: {json}", ex);
                 return null;
             }
         }
