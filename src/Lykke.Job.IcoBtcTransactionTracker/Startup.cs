@@ -13,6 +13,7 @@ using Lykke.Job.IcoBtcTransactionTracker.Core.Settings;
 using Lykke.Job.IcoBtcTransactionTracker.Models;
 using Lykke.Job.IcoBtcTransactionTracker.Modules;
 using Lykke.Logs;
+using Lykke.Logs.Slack;
 using Lykke.SettingsReader;
 using Lykke.SlackNotification.AzureQueue;
 using Microsoft.AspNetCore.Builder;
@@ -204,6 +205,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker
 
                 aggregateLogger.AddLog(azureStorageLogger);
             }
+
+            aggregateLogger.AddIcoSlackLog(slackService);
 
             return aggregateLogger;
         }
