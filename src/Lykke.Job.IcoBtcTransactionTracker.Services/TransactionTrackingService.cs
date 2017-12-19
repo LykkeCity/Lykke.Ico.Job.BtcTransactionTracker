@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Common;
 using Common.Log;
 using Lykke.Ico.Core;
 using Lykke.Ico.Core.Queues;
 using Lykke.Ico.Core.Queues.Transactions;
 using Lykke.Ico.Core.Repositories.CampaignInfo;
 using Lykke.Ico.Core.Repositories.InvestorAttribute;
+using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using NBitcoin;
@@ -57,60 +59,55 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             if (lastProcessedHeight >= lastConfirmed.AdditionalInformation.Height)
             {
                 // all processed or start height is greater than current height
+                await _log.WriteInfoAsync(nameof(Track),
+                    $"Network: {_network}, LastProcessedHeight: {lastProcessedHeight}, LastConfirmedHeight: {lastConfirmed.AdditionalInformation.Height}",
+                    $"No new data");
+
                 return;
             }
 
-            var from = lastProcessedHeight + 1;
-            var to = lastConfirmed.AdditionalInformation.Height;
-            var blockCount = to - lastProcessedHeight;
-            var blockRange = blockCount > 1 ? $"[{from} - {to}, {blockCount}]" : $"[{to}]";
-            var txCount = 0;
-
-            await _log.WriteInfoAsync(nameof(Track),
-                $"Network: {_network.Name}, Range: {blockRange}", 
-                $"Processing started");
-
-            for (var h = from; h <= to; h++)
-            {
-                txCount += await ProcessBlock(h);
-                await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, h.ToString());
-            }
-
-            await _log.WriteInfoAsync(nameof(Track),
-                $"Network: {_network.Name}, Range: {blockRange}, Investments: {txCount}", 
-                $"Processing completed");
+            await ProcessRange(
+                lastProcessedHeight + 1, 
+                lastConfirmed.AdditionalInformation.Height,
+                saveProgress: true);
         }
 
-        private async Task<int> ProcessBlock(ulong height)
+        public async Task<int> ProcessBlock(BlockInformation blockInfo)
         {
-            var blockInfo = await _blockchainReader.GetBlockByHeightAsync(height);
             if (blockInfo == null)
             {
-                await _log.WriteWarningAsync(nameof(ProcessBlock),
-                    $"Network: {_network.Name}, Block: {height}", 
-                    $"Block {height} not found or invalid, therefore skipped");
+                throw new ArgumentNullException(nameof(blockInfo));
+            }
+
+            if (blockInfo.AdditionalInformation.Confirmations < _trackingSettings.ConfirmationLimit)
+            {
+                await _log.WriteWarningAsync(nameof(ProcessBlockByHeight),
+                    $"Network: {_network.Name}, Block: {blockInfo.AdditionalInformation.ToJson()}",
+                    $"Insufficient confirmation count for block {blockInfo.AdditionalInformation.Height}, therefore skipped");
+
                 return 0;
             }
 
             var block = Block.Parse(blockInfo.Block);
-            var blockId = blockInfo.AdditionalInformation.BlockId;
-            var blockTime = blockInfo.AdditionalInformation.BlockTime;
-            var txCount = 0;
+            var count = 0;
 
             foreach (var tx in block.Transactions)
             {
-                var coins = tx.Outputs.AsCoins().Where(c => c.ScriptPubKey.IsValid && c.Amount.Satoshi > 0);
+                var coins = tx.Outputs.AsCoins()
+                    .Where(c => c.ScriptPubKey.IsValid && c.Amount.Satoshi > 0)
+                    .ToArray();
+
                 foreach (var coin in coins)
                 {
-                    var destAddress = coin.ScriptPubKey.GetDestinationAddress(_network);
-                    if (destAddress == null)
+                    var payInAddress = coin.ScriptPubKey.GetDestinationAddress(_network);
+                    if (payInAddress == null)
                     {
                         // not a payment
                         continue;
                     }
 
-                    var investorEmail = await _investorAttributeRepository.GetInvestorEmailAsync(InvestorAttributeType.PayInBtcAddress, destAddress.ToString());
-                    if (string.IsNullOrWhiteSpace(investorEmail))
+                    var email = await _investorAttributeRepository.GetInvestorEmailAsync(InvestorAttributeType.PayInBtcAddress, payInAddress.ToString());
+                    if (string.IsNullOrWhiteSpace(email))
                     {
                         // destination address is not a cash-in address of any ICO investor
                         continue;
@@ -120,24 +117,88 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
                     await _transactionQueue.SendAsync(new TransactionMessage
                     {
-                        Email = investorEmail,
+                        Email = email,
                         UniqueId = coin.Outpoint.ToString(),
                         Currency = CurrencyType.Bitcoin,
                         TransactionId = transactionId,
-                        BlockId = blockId,
-                        CreatedUtc = blockTime.UtcDateTime,
-                        PayInAddress = destAddress.ToString(),
+                        BlockId = blockInfo.AdditionalInformation.BlockId,
+                        CreatedUtc = blockInfo.AdditionalInformation.BlockTime.UtcDateTime,
+                        PayInAddress = payInAddress.ToString(),
                         Amount = coin.Amount.ToUnit(MoneyUnit.BTC),
                         Link = $"{_trackingSettings.BtcTrackerUrl}tx/{transactionId}"
                     });
 
-                    txCount++;
+                    count++;
                 }
             }
 
-            await _log.WriteInfoAsync(nameof(ProcessBlock),
-                $"Network: {_network.Name}, Block: {height}, Investments: {txCount}",
-                $"Block {height} processed");
+            await _log.WriteInfoAsync(nameof(ProcessBlockByHeight),
+                $"Network: {_network.Name}, Block: {blockInfo.AdditionalInformation.ToJson()}, Investments: {count}",
+                $"Block {blockInfo.AdditionalInformation.Height} processed");
+
+            return count;
+        }
+
+        public async Task<int> ProcessBlockByHeight(ulong height)
+        {
+            var blockInfo = await _blockchainReader.GetBlockByHeightAsync(height);
+            if (blockInfo == null)
+            {
+                await _log.WriteWarningAsync(nameof(ProcessBlockByHeight),
+                    $"Network: {_network.Name}, Block: {height}",
+                    $"Block {height} not found or invalid, therefore skipped");
+
+                return 0;
+            }
+
+            return await ProcessBlock(blockInfo);
+        }
+
+        public async Task<int> ProcessBlockById(string id)
+        {
+            var blockInfo = await _blockchainReader.GetBlockByIdAsync(id);
+            if (blockInfo == null)
+            {
+                await _log.WriteWarningAsync(nameof(ProcessBlockById),
+                    $"Network: {_network.Name}, Block: {id}",
+                    $"Block {id} not found or invalid, therefore skipped");
+
+                return 0;
+            }
+
+            return await ProcessBlock(blockInfo);
+        }
+
+        public async Task<int> ProcessRange(ulong fromHeight, ulong toHeight, bool saveProgress = true)
+        {
+            if (fromHeight > toHeight)
+            {
+                throw new ArgumentException("Invalid range");
+            }
+
+            var blockRange = toHeight > fromHeight ? 
+                $"[{fromHeight} - {toHeight}, {toHeight - fromHeight + 1}]" :
+                $"[{fromHeight}]";
+
+            var txCount = 0;
+
+            await _log.WriteInfoAsync(nameof(Track),
+                $"Network: {_network.Name}, Range: {blockRange}",
+                $"Range processing started");
+
+            for (var h = fromHeight; h <= toHeight; h++)
+            {
+                txCount += await ProcessBlockByHeight(h);
+
+                if (saveProgress)
+                {
+                    await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, h.ToString());
+                }
+            }
+
+            await _log.WriteInfoAsync(nameof(Track),
+                $"Network: {_network.Name}, Range: {blockRange}, Investments: {txCount}",
+                $"Range processing completed");
 
             return txCount;
         }

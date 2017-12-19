@@ -20,7 +20,17 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             _ninjaHttpClient.BaseAddress = new Uri(ninjaUrl);
         }
 
-        public async Task<BlockInformation> GetLastConfirmedBlockAsync(UInt64 confirmationLimit = 0)
+        public async Task<BlockInformation> GetBlockByHeightAsync(ulong height)
+        {
+            return await DoNinjaRequest<BlockInformation>($"blocks/{height}");
+        }
+
+        public async Task<BlockInformation> GetBlockByIdAsync(string id)
+        {
+            return await DoNinjaRequest<BlockInformation>($"blocks/{id}");
+        }
+
+        public async Task<BlockInformation> GetLastConfirmedBlockAsync(ulong confirmationLimit = 0)
         {
             var url = confirmationLimit > 0 ?
                 $"blocks/tip-{confirmationLimit - 1}?headeronly=true" :
@@ -29,12 +39,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             return await DoNinjaRequest<BlockInformation>(url);
         }
 
-        public async Task<BlockInformation> GetBlockByHeightAsync(UInt64 height)
-        {
-            return await DoNinjaRequest<BlockInformation>($"blocks/{height}");
-        }
-
-        private async Task<T> DoNinjaRequest<T>(String url) where T : class
+        public async Task<T> DoNinjaRequest<T>(string url) where T : class
         {
             var resp = await _ninjaHttpClient.GetAsync(url);
 

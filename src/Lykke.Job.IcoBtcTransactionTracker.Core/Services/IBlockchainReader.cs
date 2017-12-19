@@ -6,7 +6,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Core.Services
 {
     public interface IBlockchainReader
     {
-        Task<BlockInformation> GetBlockByHeightAsync(UInt64 height);
-        Task<BlockInformation> GetLastConfirmedBlockAsync(UInt64 confirmationLimit = 0);
+        Task<BlockInformation> GetBlockByHeightAsync(ulong height);
+        Task<BlockInformation> GetBlockByIdAsync(string id);
+        Task<BlockInformation> GetLastConfirmedBlockAsync(ulong confirmationLimit = 0);
     }
 }
