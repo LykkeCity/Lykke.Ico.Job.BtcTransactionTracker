@@ -1,5 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Core.Services

@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Models.Scan;
 using Microsoft.AspNetCore.Mvc;

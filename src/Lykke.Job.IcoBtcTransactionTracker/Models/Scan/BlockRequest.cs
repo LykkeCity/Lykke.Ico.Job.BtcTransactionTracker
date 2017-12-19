@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Lykke.Job.IcoBtcTransactionTracker.Models.Scan
+﻿namespace Lykke.Job.IcoBtcTransactionTracker.Models.Scan
 {
     public class BlockRequest
     {
