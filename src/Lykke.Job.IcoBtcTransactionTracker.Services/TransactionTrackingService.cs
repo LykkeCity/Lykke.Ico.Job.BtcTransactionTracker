@@ -81,7 +81,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
             if (blockInfo.AdditionalInformation.Confirmations < _trackingSettings.ConfirmationLimit)
             {
-                await _log.WriteWarningAsync(nameof(ProcessBlockByHeight),
+                await _log.WriteWarningAsync(nameof(ProcessBlock),
                     $"Network: {_network.Name}, Block: {blockInfo.AdditionalInformation.ToJson()}",
                     $"Insufficient confirmation count for block {blockInfo.AdditionalInformation.Height}, therefore skipped");
 
@@ -132,7 +132,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 }
             }
 
-            await _log.WriteInfoAsync(nameof(ProcessBlockByHeight),
+            await _log.WriteInfoAsync(nameof(ProcessBlock),
                 $"Network: {_network.Name}, Block: {blockInfo.AdditionalInformation.ToJson()}, Investments: {count}",
                 $"Block {blockInfo.AdditionalInformation.Height} processed");
 
@@ -182,7 +182,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
             var txCount = 0;
 
-            await _log.WriteInfoAsync(nameof(Track),
+            await _log.WriteInfoAsync(nameof(ProcessRange),
                 $"Network: {_network.Name}, Range: {blockRange}",
                 $"Range processing started");
 
@@ -196,7 +196,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 }
             }
 
-            await _log.WriteInfoAsync(nameof(Track),
+            await _log.WriteInfoAsync(nameof(ProcessRange),
                 $"Network: {_network.Name}, Range: {blockRange}, Investments: {txCount}",
                 $"Range processing completed");
 
