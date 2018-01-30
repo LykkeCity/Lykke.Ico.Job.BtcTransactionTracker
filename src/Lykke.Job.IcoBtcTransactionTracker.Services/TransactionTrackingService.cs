@@ -51,7 +51,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             }
 
             var lastProcessedBlockBtc = await _campaignInfoRepository.GetValueAsync(CampaignInfoType.LastProcessedBlockBtc);
-            if (!ulong.TryParse(lastProcessedBlockBtc, out var lastProcessedHeight) || lastProcessedHeight == 0)
+            if (!ulong.TryParse(lastProcessedBlockBtc, out var lastProcessedHeight) || lastProcessedHeight < _trackingSettings.StartHeight)
             {
                 lastProcessedHeight = _trackingSettings.StartHeight;
             }
