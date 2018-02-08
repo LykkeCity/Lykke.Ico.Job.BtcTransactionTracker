@@ -6,9 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Lykke.Ico.Core" Version="1.0.122" />
+    <PackageReference Include="Lykke.Service.IcoCommon.Client" Version="1.0.6" />
     <PackageReference Include="Lykke.Service.RateCalculator.Client" Version="1.0.12" />
-    <PackageReference Include="NBitcoin" Version="4.0.0.52" />
+    <PackageReference Include="NBitcoin" Version="4.0.0.54" />
   </ItemGroup>
 
   <ItemGroup>

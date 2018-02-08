@@ -1,16 +1,16 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Common.Log;
-using Lykke.Ico.Core;
-using Lykke.Ico.Core.Queues;
-using Lykke.Ico.Core.Queues.Transactions;
-using Lykke.Ico.Core.Repositories.CampaignInfo;
-using Lykke.Ico.Core.Repositories.InvestorAttribute;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
+using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Settings;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using Lykke.Job.IcoBtcTransactionTracker.Services;
+using Lykke.Service.IcoCommon.Client;
+using Lykke.Service.IcoCommon.Client.Models;
 using Moq;
 using NBitcoin;
 using NBitcoin.DataEncoders;
@@ -22,14 +22,13 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
     {
         private ILog _log;
         private TrackingSettings _trackingSettings;
-        private Mock<ICampaignInfoRepository> _campaignInfoRepository;
-        private Mock<IInvestorAttributeRepository> _investorAttributeRepository;
-        private Mock<IQueuePublisher<TransactionMessage>> _transactionQueue;
+        private Mock<ISettingsRepository> _settingsRepository;
+        private Mock<IIcoCommonServiceClient> _commonServiceClient;
         private Mock<IBlockchainReader> _blockchainReader;
         private Network _network = Network.TestNet;
-        private string _lastProcessed;
+        private ulong _lastProcessed;
 
-        public string LastProcessed
+        public ulong LastProcessed
         {
             get => _lastProcessed;
             set => _lastProcessed = value;
@@ -45,33 +44,24 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
 
             blockFactory = blockFactory ?? defaultBlockFactory;
 
-            _lastProcessed = lastProcessed.ToString();
+            _lastProcessed = lastProcessed;
             _trackingSettings = new TrackingSettings { ConfirmationLimit = 0, StartHeight = startHeight, BtcNetwork = _network.Name };
             _log = new LogToMemory();
 
-            _campaignInfoRepository = new Mock<ICampaignInfoRepository>();
+            _settingsRepository = new Mock<ISettingsRepository>();
 
             // get _lastProcessed
-            _campaignInfoRepository
-                .Setup(m => m.GetValueAsync(It.Is<CampaignInfoType>(t => t == CampaignInfoType.LastProcessedBlockBtc)))
+            _settingsRepository
+                .Setup(m => m.GetLastProcessedBlockHeightAsync())
                 .Returns(() => Task.FromResult(_lastProcessed));
 
             // set _lastProcessed
-            _campaignInfoRepository
-                .Setup(m => m.SaveValueAsync(It.Is<CampaignInfoType>(t => t == CampaignInfoType.LastProcessedBlockBtc), It.IsAny<string>()))
-                .Callback((CampaignInfoType t, string v) => _lastProcessed = v)
+            _settingsRepository
+                .Setup(m => m.UpdateLastProcessedBlockHeightAsync(It.IsAny<ulong>()))
+                .Callback((ulong h) => _lastProcessed = h)
                 .Returns(() => Task.CompletedTask);
 
-            _investorAttributeRepository = new Mock<IInvestorAttributeRepository>();
-
-            // return test email for any pay-in address
-            _investorAttributeRepository
-                .Setup(m => m.GetInvestorEmailAsync(
-                    It.IsIn(new InvestorAttributeType[] { InvestorAttributeType.PayInBtcAddress, InvestorAttributeType.PayInEthAddress }),
-                    It.IsAny<string>()))
-                .Returns(() => Task.FromResult("test@test.test"));
-
-            _transactionQueue = new Mock<IQueuePublisher<TransactionMessage>>();
+            _commonServiceClient = new Mock<IIcoCommonServiceClient>();
 
             _blockchainReader = new Mock<IBlockchainReader>();
 
@@ -110,10 +100,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             return new TransactionTrackingService(
                 _log,
                 _trackingSettings,
-                _campaignInfoRepository.Object,
-                _investorAttributeRepository.Object,
-                _transactionQueue.Object,
-                _blockchainReader.Object);
+                _settingsRepository.Object,
+                _blockchainReader.Object,
+                _commonServiceClient.Object);
         }
 
         public BlockInformation CreateBlock(ulong height, Money money = null, Key destination = null, Script script = null)
@@ -156,7 +145,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Track();
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Exactly((int)lastConfirmed));
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Exactly((int)lastConfirmed));
         }
 
         [Fact]
@@ -171,7 +162,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Track();
 
             // Assert
-            Assert.Equal(lastConfirmed.ToString(), _lastProcessed);
+            Assert.Equal(lastConfirmed, _lastProcessed);
         }
 
         [Fact]
@@ -194,14 +185,16 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Track();
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.Is<TransactionMessage>(msg =>
-                msg.Amount == btc &&
-                msg.BlockId == block.AdditionalInformation.BlockId &&
-                msg.CreatedUtc == block.AdditionalInformation.BlockTime.UtcDateTime &&
-                msg.Currency == CurrencyType.Bitcoin &&
-                msg.PayInAddress == testAddress &&
-                msg.TransactionId == transactionId &&
-                msg.UniqueId == uniqueId)));
+            _commonServiceClient.Verify(m => m.HandleTransactionsAsync(
+                It.Is<IList<TransactionModel>>(list => list.Any(msg =>
+                    msg.Amount == btc &&
+                    msg.BlockId == block.AdditionalInformation.BlockId &&
+                    msg.CreatedUtc == block.AdditionalInformation.BlockTime.UtcDateTime &&
+                    msg.Currency == CurrencyType.BTC &&
+                    msg.PayInAddress == testAddress &&
+                    msg.TransactionId == transactionId &&
+                    msg.UniqueId == uniqueId)),
+                It.IsAny<CancellationToken>()));
         }
 
         [Fact]
@@ -225,7 +218,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Track();
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Never);
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]
@@ -238,23 +233,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Track();
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Never);
-        }
-
-        [Fact]
-        public async void Track_ShouldNotProcess_IfInvestorEmailNotFound()
-        {
-            // Arrange
-            var svc = Init();
-            _investorAttributeRepository
-                .Setup(m => m.GetInvestorEmailAsync(It.IsAny<InvestorAttributeType>(), It.IsAny<string>()))
-                .Returns(() => Task.FromResult<string>(null));
-
-            // Act
-            await svc.Track();
-
-            // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Never);
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]
@@ -267,7 +248,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Track();
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Never);
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]
@@ -280,7 +263,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.ProcessBlockByHeight(1);
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Exactly(1));
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(1));
         }
 
         [Fact]
@@ -294,7 +279,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.ProcessBlockById(testBlockHash);
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Exactly(1));
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(1));
         }
 
         [Fact]
@@ -318,7 +305,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.ProcessRange(5, 10);
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Exactly(6));
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(6));
         }
 
         [Fact]
@@ -331,7 +320,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.ProcessRange(5, 5);
 
             // Assert
-            _transactionQueue.Verify(m => m.SendAsync(It.IsAny<TransactionMessage>()), Times.Exactly(1));
+            _commonServiceClient.Verify(
+                m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(1));
         }
     }
 }

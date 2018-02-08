@@ -1,13 +1,12 @@
 ﻿using Autofac;
 using Common.Log;
-using Lykke.Ico.Core.Queues;
-using Lykke.Ico.Core.Queues.Transactions;
-using Lykke.Ico.Core.Repositories.CampaignInfo;
-using Lykke.Ico.Core.Repositories.InvestorAttribute;
+using Lykke.Job.IcoBtcTransactionTracker.AzureRepositories.Settings;
+using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Settings;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using Lykke.Job.IcoBtcTransactionTracker.PeriodicalHandlers;
 using Lykke.Job.IcoBtcTransactionTracker.Services;
+using Lykke.Service.IcoCommon.Client;
 using Lykke.SettingsReader;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Modules
@@ -16,19 +15,16 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
     {
         private readonly IcoBtcTransactionTrackerSettings _settings;
         private readonly IReloadingManager<DbSettings> _dbSettingsManager;
-        private readonly IReloadingManager<AzureQueueSettings> _azureQueueSettingsManager;
         private readonly ILog _log;
 
         public JobModule(
             IcoBtcTransactionTrackerSettings settings, 
             IReloadingManager<DbSettings> dbSettingsManager,
-            IReloadingManager<AzureQueueSettings> azureQueueSettingsManager,
             ILog log)
         {
             _settings = settings;
             _log = log;
             _dbSettingsManager = dbSettingsManager;
-            _azureQueueSettingsManager = azureQueueSettingsManager;
         }
 
         protected override void Load(ContainerBuilder builder)
@@ -47,17 +43,11 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
             builder.RegisterType<ShutdownManager>()
                 .As<IShutdownManager>();
 
-            builder.RegisterType<CampaignInfoRepository>()
-                .As<ICampaignInfoRepository>()
-                .WithParameter(TypedParameter.From(_dbSettingsManager.Nested(x => x.DataConnString)));
+            builder.RegisterIcoCommonClient(_settings.CommonServiceUrl, _log);
 
-            builder.RegisterType<InvestorAttributeRepository>()
-                .As<IInvestorAttributeRepository>()
-                .WithParameter(TypedParameter.From(_dbSettingsManager.Nested(x => x.DataConnString)));
-
-            builder.RegisterType<QueuePublisher<TransactionMessage>>()
-                .As<IQueuePublisher<TransactionMessage>>()
-                .WithParameter(TypedParameter.From(_azureQueueSettingsManager.Nested(x => x.ConnectionString)));
+            builder.RegisterType<SettingsRepository>()
+                .As<ISettingsRepository>()
+                .WithParameter(TypedParameter.From(_dbSettingsManager.ConnectionString(x => x.DataConnString)));
 
             builder.RegisterType<BlockchainReader>()
                 .As<IBlockchainReader>()

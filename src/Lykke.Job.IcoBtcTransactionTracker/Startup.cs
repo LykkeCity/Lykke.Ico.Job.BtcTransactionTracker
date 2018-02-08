@@ -65,7 +65,6 @@ namespace Lykke.Job.IcoBtcTransactionTracker
 
                 builder.RegisterModule(new JobModule(appSettings.CurrentValue.IcoBtcTransactionTrackerJob, 
                     appSettings.Nested(x => x.IcoBtcTransactionTrackerJob.Db),
-                    appSettings.Nested(x => x.IcoBtcTransactionTrackerJob.AzureQueue),
                     Log));
 
                 builder.Populate(services);
@@ -206,7 +205,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker
                 aggregateLogger.AddLog(azureStorageLogger);
             }
 
-            aggregateLogger.AddIcoSlackLog(slackService);
+            aggregateLogger.AddLog(LykkeLogToSlack.Create(slackService, "Ico", LogLevel.Error | LogLevel.FatalError));
 
             return aggregateLogger;
         }

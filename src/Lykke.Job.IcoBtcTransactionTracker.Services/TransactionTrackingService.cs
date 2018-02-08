@@ -3,14 +3,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using Common;
 using Common.Log;
-using Lykke.Ico.Core;
-using Lykke.Ico.Core.Queues;
-using Lykke.Ico.Core.Queues.Transactions;
-using Lykke.Ico.Core.Repositories.CampaignInfo;
-using Lykke.Ico.Core.Repositories.InvestorAttribute;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
+using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Settings;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
+using Lykke.Service.IcoCommon.Client;
+using Lykke.Service.IcoCommon.Client.Models;
 using NBitcoin;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Services
@@ -19,26 +17,23 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
     {
         private readonly ILog _log;
         private readonly TrackingSettings _trackingSettings;
-        private readonly ICampaignInfoRepository _campaignInfoRepository;
-        private readonly IInvestorAttributeRepository _investorAttributeRepository;
-        private readonly IQueuePublisher<TransactionMessage> _transactionQueue;
+        private readonly ISettingsRepository _settingsRepository;
         private readonly IBlockchainReader _blockchainReader;
+        private readonly IIcoCommonServiceClient _commonServiceClient;
         private readonly Network _network;
 
         public TransactionTrackingService(
             ILog log,
             TrackingSettings trackingSettings, 
-            ICampaignInfoRepository campaignInfoRepository,
-            IInvestorAttributeRepository investorAttributeRepository,
-            IQueuePublisher<TransactionMessage> transactionQueue,
-            IBlockchainReader blockchainReader)
+            ISettingsRepository settingsRepository,
+            IBlockchainReader blockchainReader,
+            IIcoCommonServiceClient commonServiceClient)
         {
             _log = log;
             _trackingSettings = trackingSettings;
-            _campaignInfoRepository = campaignInfoRepository;
-            _investorAttributeRepository = investorAttributeRepository;
-            _transactionQueue = transactionQueue;
+            _settingsRepository = settingsRepository;
             _blockchainReader = blockchainReader;
+            _commonServiceClient = commonServiceClient;
             _network = Network.GetNetwork(trackingSettings.BtcNetwork);
         }
 
@@ -50,8 +45,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                 throw new InvalidOperationException("Cannot get last confirmed block");
             }
 
-            var lastProcessedBlockBtc = await _campaignInfoRepository.GetValueAsync(CampaignInfoType.LastProcessedBlockBtc);
-            if (!ulong.TryParse(lastProcessedBlockBtc, out var lastProcessedHeight) || lastProcessedHeight < _trackingSettings.StartHeight)
+            var lastProcessedHeight = await _settingsRepository.GetLastProcessedBlockHeightAsync();
+            if (lastProcessedHeight < _trackingSettings.StartHeight)
             {
                 lastProcessedHeight = _trackingSettings.StartHeight;
             }
@@ -89,47 +84,29 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
             }
 
             var block = Block.Parse(blockInfo.Block);
+
             var count = 0;
 
-            foreach (var tx in block.Transactions)
-            {
-                var coins = tx.Outputs.AsCoins()
-                    .Where(c => c.ScriptPubKey.IsValid && c.Amount.Satoshi > 0)
-                    .ToArray();
-
-                foreach (var coin in coins)
+            var blockTransactions = block.Transactions
+                .SelectMany(tx => tx.Outputs.AsCoins()
+                    .Select(coin => new { coin, address = coin.ScriptPubKey.GetDestinationAddress(_network) })
+                    .Where(x => x.coin.ScriptPubKey.IsValid && x.coin.Amount.Satoshi > 0)
+                    .Where(x => x.address != null))
+                .Select(x => new TransactionModel()
                 {
-                    var payInAddress = coin.ScriptPubKey.GetDestinationAddress(_network);
-                    if (payInAddress == null)
-                    {
-                        // not a payment
-                        continue;
-                    }
+                    Amount = x.coin.Amount.ToDecimal(MoneyUnit.BTC),
+                    BlockId = blockInfo.AdditionalInformation.BlockId,
+                    CreatedUtc = blockInfo.AdditionalInformation.BlockTime.UtcDateTime,
+                    Currency = CurrencyType.BTC,
+                    PayInAddress = x.address.ToString(),
+                    TransactionId = x.coin.Outpoint.Hash.ToString(),
+                    UniqueId = x.coin.Outpoint.ToString()
+                })
+                .ToList();
 
-                    var email = await _investorAttributeRepository.GetInvestorEmailAsync(InvestorAttributeType.PayInBtcAddress, payInAddress.ToString());
-                    if (string.IsNullOrWhiteSpace(email))
-                    {
-                        // destination address is not a cash-in address of any ICO investor
-                        continue;
-                    }
-
-                    var transactionId = coin.Outpoint.Hash.ToString();
-
-                    await _transactionQueue.SendAsync(new TransactionMessage
-                    {
-                        Email = email,
-                        UniqueId = coin.Outpoint.ToString(),
-                        Currency = CurrencyType.Bitcoin,
-                        TransactionId = transactionId,
-                        BlockId = blockInfo.AdditionalInformation.BlockId,
-                        CreatedUtc = blockInfo.AdditionalInformation.BlockTime.UtcDateTime,
-                        PayInAddress = payInAddress.ToString(),
-                        Amount = coin.Amount.ToUnit(MoneyUnit.BTC),
-                        Link = $"{_trackingSettings.BtcTrackerUrl}tx/{transactionId}"
-                    });
-
-                    count++;
-                }
+            if (blockTransactions.Any())
+            {
+                count = await _commonServiceClient.HandleTransactionsAsync(blockTransactions);
             }
 
             await _log.WriteInfoAsync(nameof(ProcessBlock),
@@ -192,7 +169,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
                 if (saveProgress)
                 {
-                    await _campaignInfoRepository.SaveValueAsync(CampaignInfoType.LastProcessedBlockBtc, h.ToString());
+                    await _settingsRepository.UpdateLastProcessedBlockHeightAsync(h);
                 }
             }
 
