@@ -85,8 +85,6 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
             var block = Block.Parse(blockInfo.Block);
 
-            var count = 0;
-
             var blockTransactions = block.Transactions
                 .SelectMany(tx => tx.Outputs.AsCoins()
                     .Select(coin => new { coin, address = coin.ScriptPubKey.GetDestinationAddress(_network) })
@@ -103,6 +101,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                     UniqueId = x.coin.Outpoint.ToString()
                 })
                 .ToList();
+
+            var count = 0;
 
             if (blockTransactions.Any())
             {

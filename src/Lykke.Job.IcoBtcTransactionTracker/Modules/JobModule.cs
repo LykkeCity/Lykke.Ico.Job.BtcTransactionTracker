@@ -47,7 +47,8 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Modules
 
             builder.RegisterType<SettingsRepository>()
                 .As<ISettingsRepository>()
-                .WithParameter(TypedParameter.From(_dbSettingsManager.ConnectionString(x => x.DataConnString)));
+                .WithParameter(TypedParameter.From(_dbSettingsManager.ConnectionString(x => x.DataConnString)))
+                .WithParameter(TypedParameter.From(_settings.InstanceId));
 
             builder.RegisterType<BlockchainReader>()
                 .As<IBlockchainReader>()

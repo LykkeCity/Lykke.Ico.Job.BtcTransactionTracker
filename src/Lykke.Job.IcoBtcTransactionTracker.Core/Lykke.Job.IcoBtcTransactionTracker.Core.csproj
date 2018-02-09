@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Lykke.Common" Version="4.4.2" />
+    <PackageReference Include="Lykke.SettingsReader" Version="1.1.4" />
   </ItemGroup>
 
 </Project>

@@ -145,6 +145,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Tests
             await svc.Track();
 
             // Assert
+            Assert.Equal(lastConfirmed, _lastProcessed);
             _commonServiceClient.Verify(
                 m => m.HandleTransactionsAsync(It.IsAny<IList<TransactionModel>>(), It.IsAny<CancellationToken>()),
                 Times.Exactly((int)lastConfirmed));
