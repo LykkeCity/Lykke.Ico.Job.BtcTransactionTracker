@@ -12,12 +12,12 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
     public class BlockchainReader : IBlockchainReader
     {
         private readonly ILog _log;
-        private readonly HttpClient _ninjaHttpClient = new HttpClient();
+        private readonly string _ninjaUrl;
 
         public BlockchainReader(ILog log, string ninjaUrl)
         {
             _log = log;
-            _ninjaHttpClient.BaseAddress = new Uri(ninjaUrl);
+            _ninjaUrl = ninjaUrl.TrimEnd('/');
         }
 
         public async Task<BlockInformation> GetBlockByHeightAsync(ulong height)
@@ -41,7 +41,9 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
         public async Task<T> DoNinjaRequest<T>(string url) where T : class
         {
-            var resp = await _ninjaHttpClient.GetAsync(url);
+            // there is a problem with singleton HttpClient in .net Core - https://github.com/dotnet/corefx/issues/25800
+            // so it's kinda better to re-create HttpClient for each request
+            var resp = await new HttpClient().GetAsync($"{_ninjaUrl}/{url}");
 
             try
             {
