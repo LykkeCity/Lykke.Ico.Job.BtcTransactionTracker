@@ -95,7 +95,7 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
                     Amount = x.coin.Amount.ToDecimal(MoneyUnit.BTC),
                     BlockId = blockInfo.AdditionalInformation.BlockId,
                     CreatedUtc = blockInfo.AdditionalInformation.BlockTime.UtcDateTime,
-                    Currency = CurrencyType.BTC,
+                    Currency = CurrencyType.Btc,
                     PayInAddress = x.address.ToString(),
                     TransactionId = x.coin.Outpoint.Hash.ToString(),
                     UniqueId = x.coin.Outpoint.ToString()

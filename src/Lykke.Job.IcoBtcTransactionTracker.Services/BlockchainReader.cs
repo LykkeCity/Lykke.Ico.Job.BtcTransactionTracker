@@ -1,23 +1,46 @@
 ﻿using System;
 using System.Net;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Common;
 using Common.Log;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Domain.Blockchain;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Newtonsoft.Json;
+using Polly;
+using Polly.Retry;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Services
 {
     public class BlockchainReader : IBlockchainReader
     {
         private readonly ILog _log;
-        private readonly string _ninjaUrl;
+        private readonly RetryPolicy<HttpResponseMessage> _retry;
+        private HttpClient _ninjaClient;
+        private void ReinitClient(string url) => 
+            _ninjaClient = new HttpClient() { BaseAddress = new Uri(url.TrimEnd('/')) };
 
         public BlockchainReader(ILog log, string ninjaUrl)
         {
             _log = log;
-            _ninjaUrl = ninjaUrl.TrimEnd('/');
+            _retry = Policy
+                .Handle<TaskCanceledException>()
+                .OrResult<HttpResponseMessage>(res => res.StatusCode == HttpStatusCode.RequestTimeout || 
+                    (res.StatusCode >= HttpStatusCode.InternalServerError && res.StatusCode != HttpStatusCode.NotImplemented))
+                .WaitAndRetryAsync(5,
+                    i => TimeSpan.FromMilliseconds(Math.Pow(2, i) * 50),
+                    (res, _) =>
+                    {
+                        if (res.Exception is TaskCanceledException)
+                        {
+                            // there is a problem with singleton HttpClient in .net Core - https://github.com/dotnet/corefx/issues/25800
+                            // so it's kinda better to re-create HttpClient in case of TaskCanceledException
+                            ReinitClient(ninjaUrl);
+                        }
+                    });
+
+            ReinitClient(ninjaUrl);
         }
 
         public async Task<BlockInformation> GetBlockByHeightAsync(ulong height)
@@ -41,26 +64,16 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
         public async Task<T> DoNinjaRequest<T>(string url) where T : class
         {
-            // there is a problem with singleton HttpClient in .net Core - https://github.com/dotnet/corefx/issues/25800
-            // so it's kinda better to re-create HttpClient for each request
-            var resp = await new HttpClient().GetAsync($"{_ninjaUrl}/{url}");
+            var resp = await _retry.ExecuteAsync(() => _ninjaClient.GetAsync(url));
 
-            try
+            if (resp.StatusCode == HttpStatusCode.NotFound && new Regex("(.+)(?: not found)$").IsMatch(resp.ReasonPhrase))
             {
-                resp.EnsureSuccessStatusCode();
+                // 404 is lawful if it's accompanied by scpecification of not found object 
+                await _log.WriteWarningAsync(nameof(DoNinjaRequest), $"Url: {url}", resp.ReasonPhrase);
+                return null;
             }
-            catch (HttpRequestException ex)
-            {
-                if (resp.StatusCode == HttpStatusCode.NotFound)
-                {
-                    await _log.WriteErrorAsync(nameof(DoNinjaRequest), $"Url: {url}", ex);
-                    return null;
-                }
-                else
-                {
-                    throw;
-                }
-            }
+
+            resp.EnsureSuccessStatusCode();
 
             var json = await resp.Content.ReadAsStringAsync();
 
