@@ -9,6 +9,7 @@ using Lykke.Job.IcoBtcTransactionTracker.Core.Services;
 using Lykke.Job.IcoBtcTransactionTracker.Core.Settings.JobSettings;
 using Lykke.Service.IcoCommon.Client;
 using Lykke.Service.IcoCommon.Client.Models;
+using MoreLinq;
 using NBitcoin;
 
 namespace Lykke.Job.IcoBtcTransactionTracker.Services
@@ -106,7 +107,10 @@ namespace Lykke.Job.IcoBtcTransactionTracker.Services
 
             if (blockTransactions.Any())
             {
-                count = await _commonServiceClient.HandleTransactionsAsync(blockTransactions);
+                foreach (var batch in blockTransactions.Batch(100))
+                {
+                    count += await _commonServiceClient.HandleTransactionsAsync(batch.ToList());
+                }
             }
 
             await _log.WriteInfoAsync(nameof(ProcessBlock),
